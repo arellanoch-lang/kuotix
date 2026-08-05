@@ -323,6 +323,7 @@ let state = {
   tab:'gastos',
   showNewTrip:false,
   showJoinGroup:false,
+  joinPrefillCode:'',
 };
 let unsubGroups = null;
 let unsubExpenses = null;
@@ -488,8 +489,8 @@ function renderJoinGroupModal(){
   <div class="overlay" onclick="if(event.target===this) closeJoinGroup()">
     <div class="modal">
       <h3>Unirme a un grupo</h3>
-      <div class="field"><label>Código del grupo</label><input id="jg-code" placeholder="Ej. X7F2A9" style="text-transform:uppercase;"></div>
-      <div class="field"><label>Tu nombre</label><input id="jg-name" placeholder="Ej. Marta"></div>
+      <div class="field"><label>Código del grupo</label><input id="jg-code" placeholder="Ej. X7F2A9" style="text-transform:uppercase;" value="${escapeHtml(state.joinPrefillCode||'')}"></div>
+      <div class="field"><label>Tu nombre</label><input id="jg-name" placeholder="Ej. Marta" autofocus></div>
       <div class="modal-actions">
         <button class="cancel-btn" onclick="closeJoinGroup()">Cancelar</button>
         <button class="primary-btn" onclick="joinGroup()">Unirme</button>
@@ -736,7 +737,8 @@ window.deleteTrip = async (tripId) => {
 window.shareInvite = (tripId) => {
   const trip = state.projects.find(p=>p.id===tripId);
   if(!trip) return;
-  const msg = `Únete a nuestro grupo "${trip.name}" en Kuotix 👋\nAbre la app y usa este código para entrar: ${trip.code}`;
+  const appUrl = `${window.location.origin}${window.location.pathname}?join=${encodeURIComponent(trip.code)}`;
+  const msg = `Únete a nuestro grupo "${trip.name}" en Kuotix 👋\n${appUrl}\n\nSi el enlace no rellena el código solo, usa este: ${trip.code}`;
   const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
   window.open(url, '_blank');
 };
@@ -909,6 +911,13 @@ window.addEventListener('error', (e)=>{
     app.innerHTML = `<div style="padding:40px;font-family:monospace;">Error al cargar la app: ${escapeHtml(e.message||'')}</div>`;
   }
 });
+const joinParam = new URLSearchParams(window.location.search).get('join');
+if(joinParam){
+  state.showJoinGroup = true;
+  state.joinPrefillCode = joinParam.toUpperCase();
+  // Limpia la URL para que no se quede el código visible ni se reabra el modal al recargar
+  window.history.replaceState({}, '', window.location.pathname);
+}
 try{
   render();
   if(fbReady){
