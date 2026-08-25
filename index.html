@@ -219,6 +219,12 @@
   }
   .member-name{font-weight:700; font-size:14.5px;}
   .member-paid{font-size:11.5px; color:var(--ink)99; font-family:'Space Mono',monospace;}
+  .weight-label{font-size:10.5px; color:var(--ink)99; display:flex; flex-direction:column; gap:3px;}
+  .weight-input{
+    width:64px; padding:5px 7px; border:1.5px solid var(--ink)55; border-radius:6px;
+    font-family:'Space Mono',monospace; font-size:13px; background:#fffdf8;
+  }
+  .weight-input:focus{outline:none; border-color:var(--blue);}
   .member-chip{
     align-self:flex-start; padding:4px 11px; border-radius:100px; font-size:12px; font-weight:700;
     font-family:'Space Mono',monospace; margin-top:auto; display:flex; align-items:center; gap:5px;
@@ -312,6 +318,8 @@ const CATS = [
 ];
 const catInfo = id => CATS.find(c=>c.id===id) || CATS[CATS.length-1];
 const fmt = n => (Math.round(n*100)/100).toFixed(2) + '€';
+const sumWeights = members => (members||[]).reduce((s,m)=>s+(m.weight||1), 0);
+const fmtWeight = n => (Number.isInteger(n) ? String(n) : (Math.round(n*10)/10).toString());
 const genCode = () => Math.random().toString(36).slice(2,8).toUpperCase();
 
 let state = {
@@ -328,11 +336,24 @@ let state = {
 let unsubGroups = null;
 let unsubExpenses = null;
 
+// Convierte miembros antiguos (solo texto) al formato {name, weight}.
+// weight = nº de personas que representa ese miembro (por defecto 1, nunca 0).
+function normalizeMembers(arr){
+  return (arr||[]).map(m=>{
+    if(typeof m === 'string') return { name:m, weight:1 };
+    const w = Number(m.weight);
+    return { name:m.name, weight:(w>0 ? w : 1) };
+  });
+}
+
 function startGroupsListener(){
   if(!fbReady) return;
   unsubGroups = groupsCol().orderBy('createdAt','desc').onSnapshot(
     snap => {
-      state.projects = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+      state.projects = snap.docs.map(d=>{
+        const data = d.data();
+        return { id:d.id, ...data, members: normalizeMembers(data.members) };
+      });
       state.loading = false;
       render();
     },
@@ -436,12 +457,12 @@ function renderHome(){
           <p class="ticket-dest display">${escapeHtml(p.name)}</p>
           <p class="ticket-dates">${escapeHtml(p.destino||'')} · ${dates}</p>
           <div class="ticket-members">
-            ${p.members.map(m=>`<span class="chip">${escapeHtml(m)}</span>`).join('')}
+            ${p.members.map(m=>`<span class="chip">${escapeHtml(m.name)}</span>`).join('')}
           </div>
         </div>
         <div class="ticket-stub">
-          <span class="stub-total-label">Miembros</span>
-          <span class="stub-total">${p.members.length}</span>
+          <span class="stub-total-label">Personas</span>
+          <span class="stub-total">${fmtWeight(sumWeights(p.members))}</span>
         </div>
       </div>`;
   }).join('');
@@ -474,7 +495,11 @@ function renderNewTripModal(){
       <div class="field">
         <label>Tu nombre</label>
         <input id="ft-creator" placeholder="Ej. María">
-        <p style="font-size:11.5px;color:var(--ink)88;margin:6px 0 0;">El resto de participantes se añadirán solos al abrir el enlace de invitación.</p>
+      </div>
+      <div class="field">
+        <label>Personas que representas en tu familia</label>
+        <input id="ft-weight" type="number" min="0.5" step="0.5" value="1">
+        <p style="font-size:11.5px;color:var(--ink)88;margin:6px 0 0;">⚠️ Añade solo una persona por unidad familiar. Si sois varios adultos, que se una solo uno y ponga el total de personas que representa (los demás no hace falta que se registren).</p>
       </div>
       <div class="modal-actions">
         <button class="cancel-btn" onclick="closeNewTrip()">Cancelar</button>
@@ -491,6 +516,11 @@ function renderJoinGroupModal(){
       <h3>Unirme a un grupo</h3>
       <div class="field"><label>Código del grupo</label><input id="jg-code" placeholder="Ej. X7F2A9" style="text-transform:uppercase;" value="${escapeHtml(state.joinPrefillCode||'')}"></div>
       <div class="field"><label>Tu nombre</label><input id="jg-name" placeholder="Ej. Marta" autofocus></div>
+      <div class="field">
+        <label>Personas que representas en tu familia</label>
+        <input id="jg-weight" type="number" min="0.5" step="0.5" value="1">
+        <p style="font-size:11.5px;color:var(--ink)88;margin:6px 0 0;">⚠️ Añade solo una persona por unidad familiar.</p>
+      </div>
       <div class="modal-actions">
         <button class="cancel-btn" onclick="closeJoinGroup()">Cancelar</button>
         <button class="primary-btn" onclick="joinGroup()">Unirme</button>
@@ -508,7 +538,7 @@ function renderTrip(){
     <div class="trip-head">
       <p class="eyebrow">${escapeHtml(trip.destino||'')}</p>
       <h2>${escapeHtml(trip.name)}</h2>
-      <p class="dates">${dates} · ${trip.members.length} miembros</p>
+      <p class="dates">${dates} · ${trip.members.length} adulto${trip.members.length===1?'':'s'} registrado${trip.members.length===1?'':'s'} · ${fmtWeight(sumWeights(trip.members))} personas en total</p>
       <div class="invite-box">
         <span>Código de invitación: <strong class="mono">${escapeHtml(code)}</strong></span>
         <button class="ghost-btn" onclick="shareInvite('${trip.id}')">📲 Compartir por WhatsApp</button>
@@ -527,7 +557,7 @@ function renderTrip(){
 }
 
 function renderGastosTab(trip){
-  const memberOptions = trip.members.map(m=>`<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  const memberOptions = trip.members.map(m=>`<option value="${escapeHtml(m.name)}">${escapeHtml(m.name)}</option>`).join('');
   const catOptions = CATS.map(c=>`<option value="${c.id}">${c.icon} ${c.label}</option>`).join('');
   const rows = [...state.expenses].sort((a,b)=> (b.fecha||'').localeCompare(a.fecha||'')).map(e=>{
     const c = catInfo(e.categoria);
@@ -587,7 +617,7 @@ function renderKpiTab(trip){
     <div class="kpi-grid">
       <div class="kpi-card"><div class="num">${fmt(total)}</div><div class="lbl">Gasto total</div></div>
       <div class="kpi-card"><div class="num">${fmt(total/porDia)}</div><div class="lbl">Por día</div></div>
-      <div class="kpi-card"><div class="num">${fmt(trip.members.length? total/trip.members.length : 0)}</div><div class="lbl">Por persona</div></div>
+      <div class="kpi-card"><div class="num">${fmt(sumWeights(trip.members)? total/sumWeights(trip.members) : 0)}</div><div class="lbl">Por persona</div></div>
       <div class="kpi-card"><div class="num">${state.expenses.length}</div><div class="lbl">Tickets registrados</div></div>
     </div>
     <p class="eyebrow">Gasto por categoría</p>
@@ -596,7 +626,8 @@ function renderKpiTab(trip){
 }
 
 function renderBalanceTab(trip){
-  const n = trip.members.length;
+  const members = trip.members;
+  const n = members.length;
   if(!n) return `<p>Añade miembros al grupo para calcular el balance.</p>`;
 
   const settledAt = trip.settledAt || 0;
@@ -607,14 +638,15 @@ function renderBalanceTab(trip){
   });
 
   const total = relevant.reduce((s,e)=>s+Number(e.monto||0),0);
-  const fairShare = total / n;
+  const totalWeight = sumWeights(members) || 1;
   const paid = {};
-  trip.members.forEach(m=>paid[m]=0);
+  members.forEach(m=>paid[m.name]=0);
   relevant.forEach(e=>{ if(paid[e.miembro]!==undefined) paid[e.miembro]+=Number(e.monto||0); });
 
-  const cards = trip.members.map(m=>{
-    const diff = paid[m]-fairShare;
-    const initials = m.trim().slice(0,2).toUpperCase();
+  const cards = members.map(m=>{
+    const fairShare = total * (m.weight/totalWeight);
+    const diff = paid[m.name]-fairShare;
+    const initials = m.name.trim().slice(0,2).toUpperCase();
     let chip;
     if(Math.abs(diff)<0.01) chip = `<span class="member-chip chip-even">✓ en paz</span>`;
     else if(diff>0) chip = `<span class="member-chip chip-owed">↑ le deben ${fmt(diff)}</span>`;
@@ -622,14 +654,17 @@ function renderBalanceTab(trip){
     return `
       <div class="member-card">
         <div class="member-avatar">${escapeHtml(initials)}</div>
-        <div class="member-name">${escapeHtml(m)}</div>
-        <div class="member-paid">Pagó ${fmt(paid[m])}</div>
+        <div class="member-name">${escapeHtml(m.name)}</div>
+        <div class="member-paid">Pagó ${fmt(paid[m.name])}</div>
+        <label class="weight-label">Personas que representa
+          <input class="weight-input" type="number" min="0.5" step="0.5" value="${m.weight}" data-trip="${trip.id}" data-member="${escapeHtml(m.name)}">
+        </label>
         ${chip}
       </div>`;
   }).join('');
 
-  // settle up — greedy
-  const balances = trip.members.map(m=>({m, d:paid[m]-fairShare}));
+  // settle up — greedy, usando el reparto proporcional al peso de cada uno
+  const balances = members.map(m=>({m:m.name, d:paid[m.name]-(total*(m.weight/totalWeight))}));
   const debtors = balances.filter(b=>b.d<-0.005).map(b=>({...b})).sort((a,b)=>a.d-b.d);
   const creditors = balances.filter(b=>b.d>0.005).map(b=>({...b})).sort((a,b)=>b.d-a.d);
   const settlements = [];
@@ -654,11 +689,35 @@ function renderBalanceTab(trip){
       <span class="settled-note">${settledNote}</span>
       <button class="settle-btn" onclick="settleTrip('${trip.id}')">🤝 Saldar cuentas</button>
     </div>
-    <p class="eyebrow">Gasto medio por persona: <span class="mono">${fmt(fairShare)}</span></p>
+    <p class="eyebrow">Reparto proporcional · ${fmtWeight(totalWeight)} personas en total</p>
     <div class="balance-grid">${cards}</div>
     <p class="eyebrow" style="margin-top:24px;">Para saldar cuentas</p>
     ${settleHtml}
   `;
+}
+
+async function updateMemberWeight(tripId, name, rawValue){
+  const newWeight = parseFloat(rawValue);
+  if(!newWeight || isNaN(newWeight) || newWeight<=0){
+    alert('El número de personas debe ser mayor que 0.');
+    render();
+    return;
+  }
+  try{
+    await db.runTransaction(async (tx)=>{
+      const ref = groupsCol().doc(tripId);
+      const doc = await tx.get(ref);
+      const members = normalizeMembers(doc.data().members);
+      const idx = members.findIndex(m=>m.name===name);
+      if(idx===-1) return;
+      members[idx] = { name: members[idx].name, weight: newWeight };
+      tx.update(ref, { members });
+    });
+  }catch(e){
+    console.error(e);
+    alert('No se pudo actualizar. Revisa tu conexión.');
+    render();
+  }
 }
 
 window.settleTrip = async (tripId) => {
@@ -701,9 +760,11 @@ window.createTrip = async () => {
   const start = document.getElementById('ft-start').value;
   const end = document.getElementById('ft-end').value;
   const creator = document.getElementById('ft-creator').value.trim();
+  const weight = parseFloat(document.getElementById('ft-weight').value);
   if(!name){ alert('Ponle un nombre al grupo'); return; }
   if(!creator){ alert('Escribe tu nombre'); return; }
-  const trip = { name, destino, start, end, members:[creator], settledAt:0, code:genCode(), createdAt:Date.now() };
+  if(!weight || weight<=0){ alert('El número de personas debe ser mayor que 0'); return; }
+  const trip = { name, destino, start, end, members:[{name:creator, weight}], settledAt:0, code:genCode(), createdAt:Date.now() };
   try{
     const ref = await groupsCol().add(trip);
     state.showNewTrip=false;
@@ -746,18 +807,25 @@ window.shareInvite = (tripId) => {
 window.joinGroup = async () => {
   const code = document.getElementById('jg-code').value.trim().toUpperCase();
   const name = document.getElementById('jg-name').value.trim();
+  const weight = parseFloat(document.getElementById('jg-weight').value);
   if(!code){ alert('Escribe el código del grupo'); return; }
   if(!name){ alert('Escribe tu nombre'); return; }
+  if(!weight || weight<=0){ alert('El número de personas debe ser mayor que 0'); return; }
   try{
     const snap = await groupsCol().where('code','==',code).limit(1).get();
     if(snap.empty){ alert('No se ha encontrado ningún grupo con ese código.'); return; }
-    const doc = snap.docs[0];
-    const members = doc.data().members || [];
-    if(!members.some(m=>m.toLowerCase()===name.toLowerCase())){
-      await groupsCol().doc(doc.id).update({ members: firebase.firestore.FieldValue.arrayUnion(name) });
-    }
+    const tripId = snap.docs[0].id;
+    await db.runTransaction(async (tx)=>{
+      const ref = groupsCol().doc(tripId);
+      const doc = await tx.get(ref);
+      const members = normalizeMembers(doc.data().members);
+      if(!members.some(m=>m.name.toLowerCase()===name.toLowerCase())){
+        members.push({ name, weight });
+        tx.update(ref, { members });
+      }
+    });
     state.showJoinGroup=false;
-    openTrip(doc.id);
+    openTrip(tripId);
   }catch(e){
     console.error(e);
     alert('No se pudo unir al grupo. Revisa tu conexión.');
@@ -773,6 +841,9 @@ function attachTripHandlers(){
     ocrBtn.onclick = () => ocrFile.click();
     ocrFile.onchange = handleOcrFile;
   }
+  document.querySelectorAll('.weight-input').forEach(inp=>{
+    inp.onchange = () => updateMemberWeight(inp.dataset.trip, inp.dataset.member, inp.value);
+  });
 }
 
 async function addExpense(){
