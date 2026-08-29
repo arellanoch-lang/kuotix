@@ -687,7 +687,10 @@ function renderBalanceTab(trip){
   return `
     <div class="balance-toolbar">
       <span class="settled-note">${settledNote}</span>
-      <button class="settle-btn" onclick="settleTrip('${trip.id}')">🤝 Saldar cuentas</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="ghost-btn" onclick="shareBalance('${trip.id}')">📲 Compartir balance</button>
+        <button class="settle-btn" onclick="settleTrip('${trip.id}')">🤝 Saldar cuentas</button>
+      </div>
     </div>
     <p class="eyebrow">Reparto proporcional · ${fmtWeight(totalWeight)} personas en total</p>
     <div class="balance-grid">${cards}</div>
@@ -795,6 +798,58 @@ window.deleteTrip = async (tripId) => {
   if(state.currentTripId===tripId){ goHome(); }
 };
 
+window.shareBalance = (tripId) => {
+  const trip = state.projects.find(p=>p.id===tripId);
+  if(!trip) return;
+  const members = trip.members;
+  const settledAt = trip.settledAt || 0;
+  const relevant = state.expenses.filter(e=>{
+    const ts = e.createdAt || (e.fecha ? new Date(e.fecha+'T12:00:00').getTime() : 0);
+    return ts > settledAt;
+  });
+  const total = relevant.reduce((s,e)=>s+Number(e.monto||0),0);
+  const totalWeight = sumWeights(members) || 1;
+  const paid = {};
+  members.forEach(m=>paid[m.name]=0);
+  relevant.forEach(e=>{ if(paid[e.miembro]!==undefined) paid[e.miembro]+=Number(e.monto||0); });
+
+  const lines = [];
+  lines.push(`📊 Balance de "${trip.name}"`);
+  lines.push(`Gasto total: ${fmt(total)} · ${fmtWeight(totalWeight)} personas`);
+  lines.push('');
+  members.forEach(m=>{
+    const fairShare = total * (m.weight/totalWeight);
+    const diff = paid[m.name]-fairShare;
+    const estado = Math.abs(diff)<0.01 ? '✅ en paz' : (diff>0 ? `🟢 le deben ${fmt(diff)}` : `🔴 debe ${fmt(-diff)}`);
+    lines.push(`${m.name} (${fmtWeight(m.weight)} pers.): pagó ${fmt(paid[m.name])} · le corresponde ${fmt(fairShare)} · ${estado}`);
+  });
+
+  const balances = members.map(m=>({m:m.name, d:paid[m.name]-(total*(m.weight/totalWeight))}));
+  const debtors = balances.filter(b=>b.d<-0.005).map(b=>({...b})).sort((a,b)=>a.d-b.d);
+  const creditors = balances.filter(b=>b.d>0.005).map(b=>({...b})).sort((a,b)=>b.d-a.d);
+  const settlements = [];
+  let i=0, j=0;
+  while(i<debtors.length && j<creditors.length){
+    const pay = Math.min(-debtors[i].d, creditors[j].d);
+    if(pay>0.005) settlements.push({from:debtors[i].m, to:creditors[j].m, amount:pay});
+    debtors[i].d += pay; creditors[j].d -= pay;
+    if(Math.abs(debtors[i].d)<0.01) i++;
+    if(Math.abs(creditors[j].d)<0.01) j++;
+  }
+  lines.push('');
+  lines.push('Para saldar cuentas:');
+  if(settlements.length){
+    settlements.forEach(s=>lines.push(`${s.from} → ${s.to}: ${fmt(s.amount)}`));
+  } else {
+    lines.push('Todos en paz 🎉');
+  }
+  lines.push('');
+  lines.push('— vía Kuotix');
+
+  const url = `https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`;
+  window.open(url, '_blank');
+};
+
 window.shareInvite = (tripId) => {
   const trip = state.projects.find(p=>p.id===tripId);
   if(!trip) return;
@@ -861,6 +916,10 @@ async function addExpense(){
 
 window.deleteExpense = async (id) => {
   const trip = currentTrip();
+  const exp = state.expenses.find(e=>e.id===id);
+  const label = exp ? `${exp.descripcion || catInfo(exp.categoria).label} (${fmt(exp.monto)})` : 'este gasto';
+  const ok = confirm(`¿Eliminar ${label}? Esta acción no se puede deshacer.`);
+  if(!ok) return;
   try{ await expensesCol(trip.id).doc(id).delete(); }
   catch(e){ console.error(e); alert('No se pudo borrar el gasto. Revisa tu conexión.'); }
 };
