@@ -366,6 +366,7 @@ let state = {
   showJoinGroup:false,
   joinPrefillCode:'',
   showClaim:false,
+  showDonate:false,
   claimSel:[],
 };
 let unsubGroups = null;
@@ -451,12 +452,13 @@ function render(){
     </header>
     <main id="main"></main>
     <footer class="app-footer">
-      <a class="feedback-btn" href="mailto:arellano.ch@gmail.com?subject=Opini%C3%B3n%20sobre%20Kuotix">&iquest;Te gusta? Ay&uacute;danos a mejorarla</a>
+      <a class="feedback-btn" href="#" onclick="openDonate();return false;">&iquest;Te gusta? Ay&uacute;danos a mejorarla</a>
       <div>Desarrollado y propiedad de <a href="https://www.christeldigital.es" target="_blank" rel="noopener">www.christeldigital.es</a></div>
     </footer>
     ${state.showNewTrip ? renderNewTripModal() : ''}
     ${state.showJoinGroup ? renderJoinGroupModal() : ''}
     ${state.showClaim ? renderClaimModal() : ''}
+    ${state.showDonate ? renderDonateModal() : ''}
   `;
   const main = document.getElementById('main');
   if(state.loading){
@@ -546,6 +548,36 @@ function renderClaimModal(){
   </div>`;
 }
 
+const BIZUM_NUMBER = '606690119';
+function renderDonateModal(){
+  return `
+  <div class="overlay" onclick="if(event.target===this) closeDonate()">
+    <div class="modal">
+      <h3>¿Te gusta Kuotix?</h3>
+      <p style="font-size:14px;line-height:1.5;margin:0 0 14px;">Si te está resultando útil y quieres ayudarnos a mejorarla, puedes hacer una aportación voluntaria por Bizum al número:</p>
+      <p style="font-family:'Space Mono',monospace;font-size:24px;font-weight:700;text-align:center;margin:0 0 6px;letter-spacing:1px;">606 690 119</p>
+      <p id="donate-msg" style="font-size:12px;text-align:center;margin:0 0 14px;min-height:16px;color:#2A9D8F;"></p>
+      <p style="font-size:12px;line-height:1.45;margin:0 0 6px;opacity:.7;">Gracias por apoyar el proyecto.</p>
+      <div class="modal-actions">
+        <button class="cancel-btn" onclick="closeDonate()">Cerrar</button>
+        <button class="primary-btn" onclick="copyBizum()">Copiar número</button>
+      </div>
+    </div>
+  </div>`;
+}
+window.openDonate = () => { state.showDonate=true; render(); };
+window.closeDonate = () => { state.showDonate=false; render(); };
+window.copyBizum = async () => {
+  const msg = document.getElementById('donate-msg');
+  let ok = false;
+  try{ await navigator.clipboard.writeText(BIZUM_NUMBER); ok = true; }catch(e){
+    try{
+      const t = document.createElement('textarea'); t.value = BIZUM_NUMBER; document.body.appendChild(t);
+      t.select(); ok = document.execCommand('copy'); document.body.removeChild(t);
+    }catch(e2){}
+  }
+  if(msg) msg.textContent = ok ? 'Número copiado. Pégalo en tu app de Bizum.' : 'No se pudo copiar. Anótalo: 606 690 119';
+};
 window.openClaim = () => { state.claimSel=[]; state.showClaim=true; render(); };
 window.closeClaim = () => { state.showClaim=false; render(); };
 window.toggleClaim = (id, checked) => {
