@@ -573,9 +573,9 @@ function renderNewTripModal(){
         <input id="ft-creator" placeholder="Ej. María">
       </div>
       <div class="field">
-        <label>Personas que representas en tu familia</label>
+        <label>¿Cuántas personas representas? (tú incluido)</label>
         <input id="ft-weight" type="number" min="0.5" step="0.5" value="1">
-        <p style="font-size:11.5px;color:var(--ink)88;margin:6px 0 0;">⚠️ Añade solo una persona por unidad familiar. Si sois varios adultos, que se una solo uno y ponga el total de personas que representa (los demás no hace falta que se registren).</p>
+        <p style="font-size:11.5px;color:var(--ink)88;margin:6px 0 0;line-height:1.45;">Si venís en familia o en pareja, apuntaos con un solo nombre y suma aquí a todos. Ejemplo: 2 adultos y 2 niños = 3 (cada niño cuenta 0,5).<br>Si tu pareja también quiere apuntar gastos, que entre con exactamente tu mismo nombre.</p>
       </div>
       <div class="modal-actions">
         <button class="cancel-btn" onclick="closeNewTrip()">Cancelar</button>
@@ -593,9 +593,9 @@ function renderJoinGroupModal(){
       <div class="field"><label>Código del grupo</label><input id="jg-code" placeholder="Ej. X7F2A9" style="text-transform:uppercase;" value="${escapeHtml(state.joinPrefillCode||'')}"></div>
       <div class="field"><label>Tu nombre</label><input id="jg-name" placeholder="Ej. Marta" autofocus></div>
       <div class="field">
-        <label>Personas que representas en tu familia</label>
+        <label>¿Cuántas personas representas? (tú incluido)</label>
         <input id="jg-weight" type="number" min="0.5" step="0.5" value="1">
-        <p style="font-size:11.5px;color:var(--ink)88;margin:6px 0 0;">⚠️ Añade solo una persona por unidad familiar.</p>
+        <p style="font-size:11.5px;color:var(--ink)88;margin:6px 0 0;line-height:1.45;">Si venís en familia o en pareja, apuntaos con un solo nombre y suma aquí a todos. Ejemplo: 2 adultos y 2 niños = 3 (cada niño cuenta 0,5).<br>Si tu pareja también quiere apuntar gastos, que entre con exactamente tu mismo nombre.</p>
       </div>
       <div class="modal-actions">
         <button class="cancel-btn" onclick="closeJoinGroup()">Cancelar</button>
