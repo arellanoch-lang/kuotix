@@ -322,6 +322,38 @@ const sumWeights = members => (members||[]).reduce((s,m)=>s+(m.weight||1), 0);
 const fmtWeight = n => (Number.isInteger(n) ? String(n) : (Math.round(n*10)/10).toString());
 const genCode = () => Math.random().toString(36).slice(2,8).toUpperCase();
 
+// --- "Mis grupos": cada dispositivo recuerda los grupos que ha creado o a los que se ha unido ---
+// Solo se muestran esos. (Filtro en el dispositivo: no es seguridad real, ver reglas de Firestore.)
+const MY_GROUPS_KEY = 'kuotix_my_groups';
+// Los grupos creados antes de esta versión no tienen dueño: solo ellos se pueden "recuperar" a mano.
+const LEGACY_CUTOFF = Date.parse('2026-11-16T09:30:00+01:00');
+let myGroupsMem = [];
+function loadMyGroups(){
+  try{
+    const raw = window.localStorage.getItem(MY_GROUPS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){ return myGroupsMem.slice(); }
+}
+function saveMyGroups(arr){
+  myGroupsMem = arr.slice();
+  try{ window.localStorage.setItem(MY_GROUPS_KEY, JSON.stringify(arr)); }
+  catch(e){ console.warn('No se pudo guardar la lista de grupos en este navegador', e); }
+}
+function addMyGroup(id){
+  const a = loadMyGroups();
+  if(!a.includes(id)){ a.push(id); saveMyGroups(a); }
+}
+function removeMyGroup(id){ saveMyGroups(loadMyGroups().filter(x=>x!==id)); }
+function visibleProjects(){
+  const mine = new Set(loadMyGroups());
+  return state.projects.filter(p=>mine.has(p.id));
+}
+function legacyUnclaimed(){
+  const mine = new Set(loadMyGroups());
+  return state.projects.filter(p=>!mine.has(p.id) && (p.createdAt||0) < LEGACY_CUTOFF);
+}
+
 let state = {
   view:'home',          // home | trip
   projects:[],
@@ -332,6 +364,8 @@ let state = {
   showNewTrip:false,
   showJoinGroup:false,
   joinPrefillCode:'',
+  showClaim:false,
+  claimSel:[],
 };
 let unsubGroups = null;
 let unsubExpenses = null;
@@ -421,6 +455,7 @@ function render(){
     </footer>
     ${state.showNewTrip ? renderNewTripModal() : ''}
     ${state.showJoinGroup ? renderJoinGroupModal() : ''}
+    ${state.showClaim ? renderClaimModal() : ''}
   `;
   const main = document.getElementById('main');
   if(state.loading){
@@ -437,18 +472,23 @@ function render(){
 }
 
 function renderHome(){
-  if(!state.projects.length){
+  const list = visibleProjects();
+  const legacyLink = legacyUnclaimed().length
+    ? `<p style="text-align:center;margin-top:22px;"><button class="ghost-btn" onclick="openClaim()">Recuperar grupos anteriores</button></p>`
+    : '';
+  if(!list.length){
     return `
       <div class="empty-state">
-        <p class="display">Aún no hay grupos registrados</p>
-        <p>Crea tu primer grupo para empezar a anotar los gastos compartidos.</p>
+        <p class="display">Aún no tienes grupos en este dispositivo</p>
+        <p>Crea uno nuevo o únete con el código o el enlace que te hayan enviado.</p>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
           <button class="primary-btn" onclick="openNewTrip()">＋ Crear grupo</button>
           <button class="ghost-btn" onclick="openJoinGroup()">🔗 Unirme con un código</button>
         </div>
-      </div>`;
+      </div>
+      ${legacyLink}`;
   }
-  const cards = state.projects.map(p=>{
+  const cards = list.map(p=>{
     const dates = p.start && p.end ? `${p.start} → ${p.end}` : 'Fechas sin definir';
     return `
       <div class="ticket" onclick="openTrip('${p.id}')">
@@ -470,7 +510,7 @@ function renderHome(){
     <div class="section-title">
       <div>
         <p class="eyebrow">Mis grupos</p>
-        <h2>${state.projects.length} grupo${state.projects.length>1?'s':''}</h2>
+        <h2>${list.length} grupo${list.length>1?'s':''}</h2>
       </div>
       <div style="display:flex;gap:10px;">
         <button class="ghost-btn" onclick="openJoinGroup()">🔗 Unirme</button>
@@ -478,8 +518,44 @@ function renderHome(){
       </div>
     </div>
     ${cards}
+    ${legacyLink}
   `;
 }
+
+function renderClaimModal(){
+  const list = legacyUnclaimed();
+  const rows = list.length
+    ? list.map(p=>`
+      <label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;margin-bottom:8px;background:var(--paper-2);border:1px solid var(--ink)33;border-radius:9px;cursor:pointer;">
+        <input type="checkbox" style="margin-top:3px;" ${state.claimSel.includes(p.id)?'checked':''} onchange="toggleClaim('${p.id}', this.checked)">
+        <span><strong>${escapeHtml(p.name)}</strong><br><span style="font-size:12px;color:var(--ink)99;">${p.members.map(m=>escapeHtml(m.name)).join(', ')}</span></span>
+      </label>`).join('')
+    : `<p>No quedan grupos anteriores por recuperar.</p>`;
+  return `
+  <div class="overlay" onclick="if(event.target===this) closeClaim()">
+    <div class="modal">
+      <h3>Recuperar grupos anteriores</h3>
+      <p style="font-size:13px;color:var(--ink)99;margin:0 0 14px;">Marca solo los grupos en los que participas. Los demás no se mostrarán en este dispositivo.</p>
+      ${rows}
+      <div class="modal-actions">
+        <button class="cancel-btn" onclick="closeClaim()">Cancelar</button>
+        <button class="primary-btn" onclick="confirmClaim()">Añadir a mis grupos</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+window.openClaim = () => { state.claimSel=[]; state.showClaim=true; render(); };
+window.closeClaim = () => { state.showClaim=false; render(); };
+window.toggleClaim = (id, checked) => {
+  state.claimSel = checked ? [...new Set([...state.claimSel, id])] : state.claimSel.filter(x=>x!==id);
+};
+window.confirmClaim = () => {
+  state.claimSel.forEach(addMyGroup);
+  state.showClaim=false;
+  state.claimSel=[];
+  render();
+};
 
 function renderNewTripModal(){
   return `
@@ -768,13 +844,17 @@ window.createTrip = async () => {
   if(!creator){ alert('Escribe tu nombre'); return; }
   if(!weight || weight<=0){ alert('El número de personas debe ser mayor que 0'); return; }
   const trip = { name, destino, start, end, members:[{name:creator, weight}], settledAt:0, code:genCode(), createdAt:Date.now() };
+  // Se genera el id antes de guardar para marcar el grupo como "mío" antes de que llegue el primer refresco
+  const ref = groupsCol().doc();
+  addMyGroup(ref.id);
   try{
-    const ref = await groupsCol().add(trip);
+    await ref.set(trip);
     state.showNewTrip=false;
     render();
     openTrip(ref.id);
   }catch(e){
     console.error(e);
+    removeMyGroup(ref.id);
     alert('No se pudo crear el grupo. Revisa tu conexión a internet.');
   }
 };
@@ -795,6 +875,7 @@ window.deleteTrip = async (tripId) => {
     alert('No se pudo eliminar el grupo. Revisa tu conexión.');
     return;
   }
+  removeMyGroup(tripId);
   if(state.currentTripId===tripId){ goHome(); }
 };
 
@@ -879,6 +960,7 @@ window.joinGroup = async () => {
         tx.update(ref, { members });
       }
     });
+    addMyGroup(tripId);
     state.showJoinGroup=false;
     openTrip(tripId);
   }catch(e){
